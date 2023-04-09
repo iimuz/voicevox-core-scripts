@@ -1,12 +1,12 @@
 ---
-title: epub to text
+title: voicevox coreを利用した読み上げスクリプト
 date: 2023-04-09
 lastmod: 2023-04-09
 ---
 
 ## 概要
 
-epub からテキストを抽出するためのスクリプトです。
+[voicevox core](https://github.com/VOICEVOX/voicevox_core) を利用して読み上げ音声を作成するスクリプトです。
 
 ## ファイル構成
 
