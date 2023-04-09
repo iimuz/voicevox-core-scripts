@@ -1,15 +1,19 @@
 """epubからテキストを抽出するスクリプト."""
+from ctypes import CDLL
 import logging
 import sys
 from argparse import ArgumentParser
 from logging import Formatter, StreamHandler
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from pprint import pprint
 
-import ebooklib
-from ebooklib import epub
-from markdownify import markdownify as md
 from pydantic import BaseModel
+
+for dllpath in Path("data/external/onnxruntime-win-x64-1.13.1/lib/").glob("*.dll"):
+    # for dllpath in Path("data/external/onnxruntime-win-x64-gpu-1.13.1/lib/").glob("*.dll"):
+    CDLL(str(dllpath.resolve(strict=True)))
+from voicevox_core import VoicevoxCore, METAS
 
 _logger = logging.getLogger(__name__)
 
@@ -33,8 +37,6 @@ def _main() -> None:
     # 保存場所の初期化
     interim_dir = config.data_dir / "interim"
     interim_dir.mkdir(exist_ok=True)
-    external_dir = config.data_dir / "external"
-    external_dir.mkdir(exist_ok=True)
 
     # ログ設定
     loglevel = {
@@ -55,12 +57,17 @@ def _main() -> None:
         output_filepath = config.input.with_suffix(".md")
 
     # テキストの抽出しmarkdown形式で保存
-    with output_filepath.open("wt", encoding="utf-8") as f:
-        book = epub.read_epub(str(config.input))
-        for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
-            html_contents = item.get_body_content().decode()
-            md_contents = md(html_contents)
-            f.write(md_contents)
+    core = VoicevoxCore(
+        open_jtalk_dict_dir=Path("data/external/open_jtalk_dic_utf_8-1.11")
+    )
+    # pprint(METAS)
+    speaker_id = 2
+    text = "こんにちは、これはテストです。"
+    if not core.is_model_loaded(speaker_id):  # モデルが読み込まれていない場合
+        core.load_model(speaker_id)  # 指定したidのモデルを読み込む
+    wave_bytes = core.tts(text, speaker_id)  # 音声合成を行う
+    with open("data/processed/output.wav", "wb") as f:
+        f.write(wave_bytes)  # ファイルに書き出す
 
 
 def _parse_args() -> _RunConfig:
