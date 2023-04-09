@@ -9,9 +9,8 @@ urls = {repository = "https://github.com/iimuz/til/til-20230409"}
 version = "1.0.0"
 
 dependencies = [
-  "ebooklib",
-  "markdownify",
   "pydantic",
+  "voicevox_core @ https://github.com/VOICEVOX/voicevox_core/releases/download/0.14.3/voicevox_core-0.14.3+cpu-cp38-abi3-win_amd64.whl",
 ]
 
 [tools.setuptools.package-dir]
