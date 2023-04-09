@@ -1,19 +1,15 @@
 """epubからテキストを抽出するスクリプト."""
-from ctypes import CDLL
+import json
 import logging
 import sys
 from argparse import ArgumentParser
 from logging import Formatter, StreamHandler
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from pprint import pprint
 
+import requests
 from pydantic import BaseModel
-
-for dllpath in Path("data/external/onnxruntime-win-x64-1.13.1/lib/").glob("*.dll"):
-    # for dllpath in Path("data/external/onnxruntime-win-x64-gpu-1.13.1/lib/").glob("*.dll"):
-    CDLL(str(dllpath.resolve(strict=True)))
-from voicevox_core import VoicevoxCore, METAS
+from moviepy.editor import concatenate_audioclips, AudioFileClip
 
 _logger = logging.getLogger(__name__)
 
@@ -56,18 +52,49 @@ def _main() -> None:
     if output_filepath is None:
         output_filepath = config.input.with_suffix(".md")
 
-    # テキストの抽出しmarkdown形式で保存
-    core = VoicevoxCore(
-        open_jtalk_dict_dir=Path("data/external/open_jtalk_dic_utf_8-1.11")
-    )
-    # pprint(METAS)
+    # テキストをwavへ変換
     speaker_id = 2
-    text = "こんにちは、これはテストです。"
-    if not core.is_model_loaded(speaker_id):  # モデルが読み込まれていない場合
-        core.load_model(speaker_id)  # 指定したidのモデルを読み込む
-    wave_bytes = core.tts(text, speaker_id)  # 音声合成を行う
-    with open("data/processed/output.wav", "wb") as f:
-        f.write(wave_bytes)  # ファイルに書き出す
+    with config.input.open("rt", encoding="utf-8") as read_f:
+        for text_idx, text in enumerate(read_f.readlines()):
+            text = text.rstrip()
+            if text == "" or text[0] == "#" or len(text) < 2:
+                _logger.debug("skip. text is empty.")
+                continue
+            _logger.debug(f"text: len={len(text)}: {text}")
+
+            res1 = requests.post(
+                "http://127.0.0.1:50021/audio_query",
+                params={"text": text, "speaker": speaker_id},
+            )
+            res2 = requests.post(
+                "http://127.0.0.1:50021/synthesis",
+                params={"speaker": 1},
+                data=json.dumps(res1.json()),
+            )
+            with open(f"data/processed/output{text_idx:05d}.wav", "wb") as write_f:
+                write_f.write(res2.content)
+
+    # wavファイルを結合してmp3に変換
+    # 全ファイルを一括で実施すると使用メモリ量が多くなるため500行を目安に区切る。
+    # 実際には1行に含まれる文字数に依存するため暫定処置
+    wav_filelist = sorted(Path("data/processed/").glob("output*.wav"))
+    _logger.debug(f"wave filepath len: {len(wav_filelist)}")
+    clips = list()
+    for wav_index, filepath in enumerate(wav_filelist):
+        clips.append(AudioFileClip(str(filepath)))
+        if ((wav_index + 1) % 500) == 0:
+            _logger.debug(f"save file index: {wav_index + 1}")
+            final_clip = concatenate_audioclips(clips)
+            final_clip.write_audiofile(
+                str(Path(f"data/processed/final{wav_index + 1:05d}.mp3"))
+            )
+            clips = list()
+    if len(clips) > 0:
+        _logger.debug("save rest file.")
+        final_clip = concatenate_audioclips(clips)
+        final_clip.write_audiofile(
+            str(Path(f"data/processed/final{wav_index + 1:05d}.mp3"))
+        )
 
 
 def _parse_args() -> _RunConfig:
